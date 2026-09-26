@@ -8,7 +8,7 @@ const ExcelJS = require('exceljs');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
 const os = require('os');
-const { createStore } = require('./lib/store');
+const { createStore, storageEnvNames } = require('./lib/store');
 
 const store = createStore();
 const SLOTS = ['A', 'B'];
@@ -592,14 +592,27 @@ const bad = (msg, status = 400) => { throw new HttpError(status, msg); };
 
 // Wrap async handlers so errors become clean JSON responses.
 const h = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch(err => {
-    if (!res.headersSent) res.status(err.status || 500).json({ error: err.status ? err.message : 'Server error — please try again' });
+    if (!res.headersSent) res.status(err.status || 500).json({ error: err.status ? err.message : `Server error: ${err.message}` });
     if (!err.status) console.error(err);
 });
 
-// On Vercel the file store can't work (read-only, not shared) — explain what to add.
+// Quick diagnostics: open /api/health in a browser. Shows env var NAMES only, never values.
+app.get('/api/health', async (req, res) => {
+    const out = { storage: store.kind, onVercel: ON_VERCEL, adminPinFromEnv: Boolean(ENV_PIN), databaseEnvVars: storageEnvNames() };
+    try {
+        const t = Date.now();
+        await store.mget(['config']);
+        out.database = `ok (${Date.now() - t} ms)`;
+    } catch (err) {
+        out.database = `error: ${err.message}`;
+    }
+    res.set('Cache-Control', 'no-store').json(out);
+});
+
+// On Vercel without a database, explain what to add instead of failing silently.
 app.use('/api', (req, res, next) => {
-    if (ON_VERCEL && store.kind !== 'redis') {
-        return res.status(503).json({ error: 'Database not connected. In Vercel open your project → Storage → Create Database → Upstash for Redis → Connect, then redeploy.' });
+    if (store.kind === 'missing') {
+        return res.status(503).json({ error: 'Database not connected. In Vercel open your project → Storage → Create Database → Upstash for Redis → Connect to this project, then Deployments → Redeploy.' });
     }
     next();
 });
@@ -771,7 +784,7 @@ admin.use((req, res, next) => {
     const pin = String(req.get('x-admin-pin') || req.query.pin || '');
     loadWorld()
         .then(W => (pin && pin === String(S(W).adminPin) ? next() : res.status(401).json({ error: 'Wrong PIN' })))
-        .catch(err => { console.error(err); res.status(500).json({ error: 'Server error — please try again' }); });
+        .catch(err => { console.error(err); res.status(err.status || 500).json({ error: err.status ? err.message : `Server error: ${err.message}` }); });
 });
 
 function lanIps() {

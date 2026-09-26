@@ -225,7 +225,13 @@
     }
 
     async function loadContent() {
-        content = await fetch('/api/content').then(r => r.json());
+        const res = await fetch('/api/content', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.games) {
+            $('left').innerHTML = `<div class="empty-board"><div><b>Can't load the games</b><span>${esc(data.error || `HTTP ${res.status}`)}</span></div></div>`;
+            throw new Error(data.error || 'load failed');
+        }
+        content = data;
         lastLeft = lastRight = '';
     }
 

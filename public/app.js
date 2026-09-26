@@ -164,9 +164,16 @@
         return data;
     }
 
+    let loadError = '';
     async function loadContent() {
-        const res = await fetch('/api/content');
-        content = await res.json();
+        const res = await fetch('/api/content', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({ error: `The game server returned an error (HTTP ${res.status}).` }));
+        if (!res.ok || !data.games) {
+            loadError = data.error || `The game server returned an error (HTTP ${res.status}).`;
+            throw new Error(loadError);
+        }
+        loadError = '';
+        content = data;
     }
 
     // Ask the server for the latest state about once a second (and right after every tap).
@@ -180,6 +187,7 @@
             const res = await fetch(`/api/state?station=${encodeURIComponent(device.station)}&device=${encodeURIComponent(device.device)}${beat}`, { cache: 'no-store' });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
+            if (data.error) throw new Error(data.error);
             fails = 0;
             online = true;
             $('offline').hidden = true;
@@ -275,7 +283,9 @@
     function render() {
         updateChrome();
         if (!content && !['setup'].includes(view)) {
-            app.innerHTML = '<div class="loading"><span></span></div>';
+            app.innerHTML = loadError
+                ? `<div class="auth panel"><img src="assets/logo.webp" alt="SAB" class="auth-logo"><h1 class="auth-title">Can't load the games</h1><p class="auth-lead">${esc(loadError)}</p><p class="countdown">Retrying automatically…</p></div>`
+                : '<div class="loading"><span></span></div>';
             return;
         }
         const s = st();
@@ -865,7 +875,9 @@
     render();
     if (device) connect();
     else fetch('/api/state').then(r => r.json()).then(d => { snap = d; lang = lang || d.settings.defaultLang; applyLang(); render(); }).catch(() => {});
-    loadContent().then(() => { lastKey = ''; render(); }).catch(() => {});
+    (function retryContent() {
+        loadContent().then(() => { lastKey = ''; render(); }).catch(() => { lastKey = ''; render(); setTimeout(retryContent, 5000); });
+    })();
 
     // Re-announce the signed-in player after a reload.
     if (player && device) {
