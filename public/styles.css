@@ -53,6 +53,13 @@ button:focus-visible { outline: 2px solid var(--white); outline-offset: 4px; }
     z-index: -1;
     background: url('assets/background.webp') center / cover no-repeat;
 }
+/* Darken the picture so the cards stay readable (strongest in the middle, where the content sits) */
+.bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 75% 70% at 50% 45%, rgba(4,4,5,.55) 0%, rgba(4,4,5,.35) 100%), rgba(4,4,5,.35);
+}
 
 /* ───────── Glass panel ───────── */
 .panel {
