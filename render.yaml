@@ -1,0 +1,11 @@
+# One-click deploy on Render.com: New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: cmp-roadshow-games
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: ADMIN_PIN
+        sync: false   # Render asks you for the admin PIN when you deploy
