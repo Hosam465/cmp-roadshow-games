@@ -51,7 +51,7 @@ button:focus-visible { outline: 2px solid var(--white); outline-offset: 4px; }
     position: fixed;
     inset: 0;
     z-index: -1;
-    background: url('assets/background.png') center / cover no-repeat;
+    background: url('assets/background.webp') center / cover no-repeat;
 }
 
 /* ───────── Glass panel ───────── */
