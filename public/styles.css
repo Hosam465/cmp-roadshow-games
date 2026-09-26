@@ -1012,6 +1012,18 @@ html[dir="rtl"] .result h1 { letter-spacing: 0; }
 .lang-switch button.on { background: var(--white); color: var(--black); }
 .lang-switch button:not(.on):hover { color: var(--white); }
 
+.meta-right { display: inline-flex; align-items: center; gap: 10px; }
+.pts-now {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px;
+    background: rgba(255, 196, 0, 0.14); border: 1px solid rgba(255, 196, 0, 0.55);
+    color: #FFD54A; font-weight: 800; font-size: 0.95rem; white-space: nowrap;
+}
+.pts-now b { font-family: var(--display); font-size: 1.2rem; min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
+.pts-now.frozen { background: rgba(255, 255, 255, 0.08); border-color: var(--hair-2); color: var(--white); }
+.speed { display: inline-block; margin-inline-start: 8px; font-size: 0.85rem; font-weight: 700; color: #FFD54A; }
+.speed-hint { margin-top: 26px; color: #FFD54A; font-weight: 700; font-size: 1.05rem; }
+
 .hidden, [hidden] { display: none !important; }
 
 /* ───────── Responsive ───────── */

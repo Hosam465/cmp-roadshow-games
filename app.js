@@ -22,8 +22,8 @@ const uid = (p = '') => p + crypto.randomBytes(4).toString('hex');
 const DEFAULT_SETTINGS = {
     adminPin: ENV_PIN || '2026',
     stations: 2,
-    pointsPerCorrect: 10,
-    speedBonus: 5,
+    pointsPerCorrect: 10,   // a correct answer given at the very last second
+    speedBonus: 20,         // extra for answering instantly; shrinks to 0 as the timer runs out
     winBonus: 20,
     drawBonus: 10,
     scoreMode: 'best',
@@ -249,6 +249,7 @@ function revealQuestion(W, st, t) {
         correct: q ? q.a : null,
         e: q ? { en: q.en.e || '', ar: q.ar.e || '' } : null,
         picks: Object.fromEntries(m.players.map(p => [p.slot, m.answers[p.slot] ? m.answers[p.slot].opt : null])),
+        times: Object.fromEntries(m.players.map(p => [p.slot, m.answers[p.slot] ? m.answers[p.slot].ms : null])),
         gained
     };
     m.phaseStart = t;

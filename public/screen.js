@@ -142,7 +142,7 @@
             if (rv) {
                 cls += oi === rv.correct ? ' ok' : ' dim';
                 who = m.players.filter(p => rv.picks[p.slot] === oi)
-                    .map(p => `<span class="who ${oi === rv.correct ? '' : 'bad'}">${esc(first(p.name).split(' ')[0])}${rv.gained[p.slot] ? ` +${rv.gained[p.slot]}` : ''}</span>`).join('');
+                    .map(p => `<span class="who ${oi === rv.correct ? '' : 'bad'}">${esc(first(p.name).split(' ')[0])}${rv.gained[p.slot] ? ` +${rv.gained[p.slot]}` : ''}${rv.times && rv.times[p.slot] != null ? ` · ${(rv.times[p.slot] / 1000).toFixed(1)}s` : ''}</span>`).join('');
                 if (rv.e && oi === rv.correct) { /* explanation shown on the iPads */ }
             }
             return `<div class="${cls}"><span class="k">${KEYS[pos]}</span><span class="tx">${esc(q.en.o[oi])}</span>${who}</div>`;

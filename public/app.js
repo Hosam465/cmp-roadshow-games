@@ -9,13 +9,15 @@
             welcomeBack: 'Welcome back — your previous scores are saved.',
             you: 'You', vs: 'VS', points: 'pts', rank: 'Rank', record: (w, l, d) => `${w}W · ${l}L · ${d}D`,
             waitingOpp: 'Waiting for an opponent', waitingOppLead: 'Ask a colleague to sign in on the other iPad.',
-            pickGame: 'Pick a game', pickLead: 'Choose any game to challenge your opponent.', pickLeadSolo: 'No opponent yet — you can play solo.',
+            pickGame: 'Pick a game', pickLead: 'Choose any game to challenge your opponent. Faster correct answers earn more points!', pickLeadSolo: 'No opponent yet — you can play solo.',
             questions: 'questions', words: 'words', playSolo: 'Play solo', challenge: 'Challenge',
             youChallenged: (o, g) => `Waiting for ${o} to accept ${g}…`, cancel: 'Cancel',
             challengedYou: (o, g) => `${o} challenges you to ${g}!`, accept: 'Accept', decline: 'Pick another',
             oppSolo: (o) => `${o} is playing a solo game. You can challenge them when they finish.`,
             soloOff: 'Solo play is turned off — wait for an opponent.',
             getReady: 'Get ready!', question: 'Question', timeLeft: 's',
+            speedHint: "Answer fast — the quicker you're right, the more points you get!",
+            ptsNow: 'pts', answeredIn: (s) => `answered in ${s}s`,
             lockedIn: 'Locked in! Waiting for your opponent…', oppAnswered: 'answered', oppThinking: 'thinking…',
             correct: 'Correct!', wrong: 'Not quite.', timeUp: "Time's up!", answerIs: 'Correct answer',
             oppPicked: 'picked', nextIn: (s) => `Next question in ${s}s`,
@@ -46,13 +48,15 @@
             welcomeBack: 'مرحباً بعودتك — نتائجك السابقة محفوظة.',
             you: 'أنت', vs: 'ضد', points: 'نقطة', rank: 'الترتيب', record: (w, l, d) => `${w} فوز · ${l} خسارة · ${d} تعادل`,
             waitingOpp: 'بانتظار منافس', waitingOppLead: 'اطلب من زميلك تسجيل الدخول على الآيباد الآخر.',
-            pickGame: 'اختر لعبة', pickLead: 'اختر أي لعبة لتتحدى منافسك.', pickLeadSolo: 'لا يوجد منافس بعد — يمكنك اللعب منفرداً.',
+            pickGame: 'اختر لعبة', pickLead: 'اختر أي لعبة لتتحدى منافسك. الإجابة الصحيحة الأسرع تمنحك نقاطاً أكثر!', pickLeadSolo: 'لا يوجد منافس بعد — يمكنك اللعب منفرداً.',
             questions: 'أسئلة', words: 'كلمات', playSolo: 'العب منفرداً', challenge: 'تحدَّ',
             youChallenged: (o, g) => `بانتظار موافقة ${o} على ${g}…`, cancel: 'إلغاء',
             challengedYou: (o, g) => `${o} يتحداك في ${g}!`, accept: 'قبول', decline: 'اختر لعبة أخرى',
             oppSolo: (o) => `${o} يلعب منفرداً. يمكنك تحديه عندما ينتهي.`,
             soloOff: 'اللعب المنفرد غير متاح — انتظر منافساً.',
             getReady: 'استعد!', question: 'السؤال', timeLeft: 'ث',
+            speedHint: 'أجب بسرعة — كلما كانت إجابتك الصحيحة أسرع، زادت نقاطك!',
+            ptsNow: 'نقطة', answeredIn: (s) => `أجبت خلال ${s} ث`,
             lockedIn: 'تم تسجيل إجابتك! بانتظار منافسك…', oppAnswered: 'أجاب', oppThinking: 'يفكر…',
             correct: 'إجابة صحيحة!', wrong: 'ليست الإجابة الصحيحة.', timeUp: 'انتهى الوقت!', answerIs: 'الإجابة الصحيحة',
             oppPicked: 'اختار', nextIn: (s) => `السؤال التالي خلال ${s} ث`,
@@ -130,6 +134,7 @@
     let dismissed = store.get('roadshow-dismissed', {});
     let picks = {};          // qIndex -> option picked locally (so it shows instantly)
     let picksFor = null;     // match id the picks belong to
+    let pickPts = {};        // qIndex -> points shown when the player answered
     let rejoining = Boolean(player && device);
     let puzzle = null;       // local puzzle progress for the running match
     let thanksTimer = null;
@@ -224,7 +229,7 @@
     function onSnapshot() {
         // Signed out by the admin (or someone else took this iPad)?
         const cur = myMatch();
-        if (cur && cur.id !== picksFor) { picks = {}; picksFor = cur.id; }
+        if (cur && cur.id !== picksFor) { picks = {}; pickPts = {}; picksFor = cur.id; }
         if (player && !rejoining && ['lobby', 'match', 'confirm'].includes(view)) {
             const d = me();
             if (!d || d.empId !== player.empId) {
@@ -309,7 +314,18 @@
     }
 
     // Smooth timers without full redraws.
+    // Points a correct answer would earn right now (mirrors the server's formula).
+    function ptsAt(phaseStart) {
+        const s = settings();
+        const limit = (s.questionSeconds || 20) * 1000;
+        const frac = Math.max(0, 1 - (serverNow() - phaseStart) / limit);
+        return (s.pointsPerCorrect || 0) + Math.round((s.speedBonus || 0) * frac);
+    }
+
     function tick() {
+        app.querySelectorAll('[data-pts-start]').forEach(el => {
+            el.querySelector('b').textContent = ptsAt(Number(el.dataset.ptsStart));
+        });
         app.querySelectorAll('[data-deadline]').forEach(el => {
             const dl = Number(el.dataset.deadline);
             const total = Number(el.dataset.total) || 1;
@@ -496,6 +512,7 @@
                 <span class="kicker">${esc(title)}</span>
                 <h1>${esc(t('getReady'))}</h1>
                 <div class="big-count" data-deadline="${m.deadline}">${secsLeft(m.deadline)}</div>
+                ${m.type === 'puzzle' ? '' : `<p class="speed-hint">⚡ ${esc(t('speedHint'))}</p>`}
             </div>`;
         }
         if (m.phase === 'done') return renderResult(m);
@@ -518,7 +535,7 @@
                 if (oi === reveal.correct) { cls += ' is-correct'; mark = ICONS.check; }
                 else if (oi === mine) { cls += ' is-wrong'; mark = ICONS.cross; }
                 else cls += ' is-dim';
-                if (oppSlot && reveal.picks[oppSlot.slot] === oi) tags = `<span class="opp-pick">${esc(first(oppSlot.name))}</span>`;
+                if (oppSlot && reveal.picks[oppSlot.slot] === oi) tags = `<span class="opp-pick">${esc(first(oppSlot.name))}${reveal.gained[oppSlot.slot] ? ` +${reveal.gained[oppSlot.slot]}` : ''}</span>`;
             } else if (locked) {
                 cls += oi === mine ? ' is-picked' : ' is-dim';
             }
@@ -536,11 +553,13 @@
             const ok = mine === reveal.correct;
             const none = mine === null || mine === undefined;
             const gained = reveal.gained[SLOT()] || 0;
+            const ms = reveal.times ? reveal.times[SLOT()] : null;
+            const speed = ok && ms != null ? ` <span class="speed">${esc(TT().answeredIn((ms / 1000).toFixed(1)))}</span>` : '';
             const expl = reveal.e ? (reveal.e[lang] || reveal.e.en) : '';
             footer = `
             <div class="feedback ${ok ? '' : 'bad'}">
                 <div>
-                    <strong>${esc(ok ? t('correct') : none ? t('timeUp') : t('wrong'))}${gained ? ` <span class="plus">+${gained}</span>` : ''}</strong>
+                    <strong>${esc(ok ? t('correct') : none ? t('timeUp') : t('wrong'))}${gained ? ` <span class="plus">+${gained}</span>` : ''}${speed}</strong>
                     ${!ok ? `<p>${esc(t('answerIs'))}: <b>${esc(opts[reveal.correct] || q.en.o[reveal.correct])}</b></p>` : ''}
                     ${expl ? `<p>${esc(expl)}</p>` : ''}
                 </div>
@@ -556,7 +575,10 @@
         ${scoreboard(m)}
         <div class="quiz-meta">
             <span class="count">${esc(title)} · ${esc(t('question'))} <b>${String(m.qIndex + 1).padStart(2, '0')}</b> / ${String(m.qTotal).padStart(2, '0')}</span>
-            ${reveal ? '' : `<span class="timer-num" data-deadline="${m.deadline}" data-urgent>${secsLeft(m.deadline)}</span>`}
+            ${reveal ? '' : `<span class="meta-right">
+                <span class="pts-now ${locked ? 'frozen' : ''}" ${locked ? '' : `data-pts-start="${m.phaseStart}"`}>⚡ <b>${locked ? (pickPts[m.qIndex] ?? '') : ptsAt(m.phaseStart)}</b> ${esc(t('ptsNow'))}</span>
+                <span class="timer-num" data-deadline="${m.deadline}" data-urgent>${secsLeft(m.deadline)}</span>
+            </span>`}
         </div>
         ${reveal ? '<div class="timer-bar done"><span style="width:0"></span></div>' : `<div class="timer-bar" data-deadline="${m.deadline}" data-total="${settings().questionSeconds * 1000}"><span></span></div>`}
         <article class="question panel">
@@ -571,6 +593,7 @@
         const m = myMatch();
         if (!m || m.phase !== 'question' || picks[m.qIndex] !== undefined) return;
         picks[m.qIndex] = opt;
+        pickPts[m.qIndex] = ptsAt(m.phaseStart);
         render();
         post('/api/answer', { qIndex: m.qIndex, opt }).catch(() => {}).finally(pollNow);
     }

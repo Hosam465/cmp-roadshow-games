@@ -457,8 +457,8 @@
         return `
         <div class="box panel"><h2>Points</h2><p class="sub">Applies to every new match. Existing scores are not recalculated.</p>
             <div class="set-grid">
-                ${num('pointsPerCorrect', 'Points per correct answer', '')}
-                ${num('speedBonus', 'Speed bonus (max)', 'Extra points for answering instantly, sliding to 0 at the time limit.')}
+                ${num('pointsPerCorrect', 'Points for a correct answer (slowest)', 'What a correct answer is worth at the very last second.')}
+                ${num('speedBonus', 'Extra points for speed (max)', 'Added for answering instantly, shrinking every second to 0 at the time limit. E.g. 10 + 20 → instant answer = 30 points.')}
                 ${num('winBonus', 'Win bonus', 'Added to the winner of a 1v1 match.')}
                 ${num('drawBonus', 'Draw bonus', 'Added to both players on a tie.')}
                 <div class="set-item"><span class="lbl">How totals are counted</span>
