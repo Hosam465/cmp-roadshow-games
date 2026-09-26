@@ -591,6 +591,20 @@
         </div>`;
     }
 
+    let backups = null;
+    function backupsHtml() {
+        if (!backups) { loadBackups(); return '<div>Loading…</div>'; }
+        if (!backups.length) return '<div>No backups yet.</div>';
+        return backups.map(b => `
+            <div><span><b>${fmtDate(b.at)}</b> · ${b.players} players · ${b.matches} matches · ${b.evaluations} ratings<br><small style="color:var(--text-3)">${esc(b.names.slice(0, 12).join(', '))}${b.names.length > 12 ? '…' : ''}</small></span>
+                <button class="b" data-act="restore-backup" data-key="${esc(b.key)}">${armLabel(`rb-${b.key}`, 'Restore', 'Confirm restore?')}</button></div>`).join('');
+    }
+    async function loadBackups() {
+        try { backups = (await api('/api/admin/backups')).backups; } catch (e) { backups = []; }
+        const el = document.getElementById('backupList');
+        if (el) el.innerHTML = backupsHtml();
+    }
+
     async function downloadExport() {
         const res = await fetch('/api/admin/export.xlsx', {
             method: 'POST',
@@ -631,7 +645,11 @@
                 <input class="in" id="resetConfirm" placeholder="Type RESET to confirm" style="max-width:230px">
                 <button class="b danger" data-act="reset-all">Reset all results</button>
                 <button class="b danger" data-act="restore-content">${armLabel('restore', 'Restore original questions')}</button>
-            </div></div>`;
+            </div></div>
+        <div class="box panel"><h2>Backups</h2>
+            <p class="sub">Every “Reset all results” saves a backup first. Restoring adds the backup's players, matches and ratings back — anything played since is kept.</p>
+            <div class="mini-list" id="backupList">${backupsHtml()}</div>
+            <div class="btns" style="margin-top:10px"><button class="b" data-act="load-backups">Refresh list</button></div></div>`;
     }
 
     /* ───────── Timers ───────── */
@@ -827,9 +845,18 @@
             case 'exp-download':
                 try { await downloadExport(); toast('Excel downloaded'); } catch (err) { toast(err.message); }
                 return;
+            case 'load-backups': backups = null; return render();
+            case 'restore-backup':
+                if (arm(`rb-${d.key}`)) {
+                    run(async () => {
+                        const r = await post('/api/admin/restore', { key: d.key });
+                        toast(`Restored ${r.restored.players} players, ${r.restored.matches} matches, ${r.restored.evaluations} ratings`);
+                    });
+                }
+                return;
             case 'reset-all': {
                 if (document.getElementById('resetConfirm').value.trim().toUpperCase() !== 'RESET') return toast('Type RESET in the box first');
-                return run(async () => { const r = await post('/api/admin/reset'); toast(`All results cleared. Backup: ${r.backup}`); });
+                return run(async () => { await post('/api/admin/reset'); backups = null; toast('All results cleared — a backup was saved (see Backups below).'); });
             }
             case 'restore-content': if (arm('restore')) run(() => post('/api/admin/content/restore'), 'Original questions restored').then(() => { draft.c = clone(data.content); render(); }); return;
         }

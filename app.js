@@ -1024,6 +1024,61 @@ admin.post('/reset', h(async (req, res) => {
     res.json({ ok: true, backup });
 }));
 
+admin.get('/backups', h(async (req, res) => {
+    const keys = (await store.keys('backup:*')).sort().reverse().slice(0, 30);
+    const values = keys.length ? await store.mget(keys) : [];
+    res.json({
+        backups: keys.map((key, i) => {
+            let db = {};
+            try { db = JSON.parse(values[i]) || {}; } catch (e) { /* skip */ }
+            const players = Object.values(db.players || {});
+            return {
+                key, at: new Date(Number(key.split(':').pop())).toISOString(),
+                players: players.length, matches: (db.matches || []).length, evaluations: Object.keys(db.evaluations || {}).length,
+                names: players.map(p => p.name)
+            };
+        })
+    });
+}));
+
+// Bring a backup back by merging it into the current results (anything played since is kept).
+admin.post('/restore', h(async (req, res) => {
+    const key = String(req.body.key || '');
+    if (!/^backup:\d+$/.test(key)) bad('Pick a backup');
+    const exclude = new Set((Array.isArray(req.body.exclude) ? req.body.exclude : []).map(cleanId));
+    const [raw] = await store.mget([key]);
+    if (!raw) bad('Backup not found', 404);
+    const old = JSON.parse(raw);
+    const out = await mutate((W) => {
+        let players = 0, matches = 0, evaluations = 0;
+        for (const p of Object.values(old.players || {})) {
+            if (exclude.has(p.empId)) continue;
+            const cur = W.db.players[p.empId];
+            if (!cur) { W.db.players[p.empId] = p; players++; continue; }
+            const have = new Set((cur.matches || []).map(m => m.id));
+            cur.matches = [...(cur.matches || []), ...(p.matches || []).filter(m => !have.has(m.id))];
+            const haveAdj = new Set((cur.adjustments || []).map(a => a.at + a.delta));
+            cur.adjustments = [...(cur.adjustments || []), ...(p.adjustments || []).filter(a => !haveAdj.has(a.at + a.delta))];
+            if (p.createdAt && (!cur.createdAt || p.createdAt < cur.createdAt)) cur.createdAt = p.createdAt;
+            players++;
+        }
+        for (const [id, e] of Object.entries(old.evaluations || {})) {
+            if (exclude.has(id) || W.db.evaluations[id]) continue;
+            W.db.evaluations[id] = e;
+            evaluations++;
+        }
+        const have = new Set(W.db.matches.map(m => m.id));
+        for (const m of old.matches || []) {
+            if (have.has(m.id) || m.players.every(p => exclude.has(p.empId))) continue;
+            W.db.matches.push(m);
+            matches++;
+        }
+        W.db.matches.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+        return { players, matches, evaluations };
+    });
+    res.json({ ok: true, restored: out });
+}));
+
 app.use('/api/admin', admin);
 
 module.exports = { app, store, loadWorld, buildWorkbook, deviceLinks, lanIps, setOnDbSaved: (fn) => { onDbSaved = fn; } };
