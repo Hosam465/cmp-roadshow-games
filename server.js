@@ -423,7 +423,8 @@ const fmtTime = (ms) => {
 // ExcelJS stores dates as UTC; shift so Excel shows the laptop's local time.
 const xlDate = (v) => { if (!v) return null; const d = new Date(v); return new Date(d.getTime() - d.getTimezoneOffset() * 60000); };
 
-async function buildWorkbook() {
+async function buildWorkbook({ exclude = [], extra = [] } = {}) {
+    const excluded = new Set(exclude.map(String));
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Compliance Roadshow Games';
     wb.created = new Date();
@@ -455,15 +456,26 @@ async function buildWorkbook() {
         { header: 'First login', key: 'created', width: 20 },
         { header: 'Last activity', key: 'updated', width: 20 }
     ];
-    const ranks = Object.fromEntries(leaderboard().map(r => [r.empId, r.rank]));
-    for (const p of Object.values(db.players).sort((a, b) => (ranks[a.empId] || 1e9) - (ranks[b.empId] || 1e9))) {
+    // Players left out of this export, plus names typed in by the admin just for the sheet.
+    const rows = Object.values(db.players).filter(p => !excluded.has(p.empId)).map(p => {
         const t = playerTotals(p);
         const row = {
-            rank: ranks[p.empId] || '', name: p.name, empId: p.empId, station: p.station || '',
+            name: p.name, empId: p.empId, station: p.station || '',
             adjust: t.adjust || '', total: t.score, played: t.played, wins: t.wins, losses: t.losses, draws: t.draws,
-            evaluated: db.evaluations[p.empId] ? 'Yes' : 'No', created: xlDate(p.createdAt), updated: xlDate(p.updatedAt)
+            evaluated: db.evaluations[p.empId] ? 'Yes' : 'No', created: xlDate(p.createdAt), updated: xlDate(p.updatedAt),
+            _time: t.time, _ranked: t.played > 0 || t.adjust !== 0
         };
         for (const g of games) row[`g_${g.id}`] = t.byGame[g.id] ?? '';
+        return row;
+    });
+    for (const x of extra) {
+        rows.push({ name: x.name, empId: x.empId, station: '', total: x.points, played: '', wins: '', losses: '', draws: '', evaluated: '', _time: 0, _ranked: true });
+    }
+    rows.sort((a, b) => (b._ranked - a._ranked) || (b.total - a.total) || (a._time - b._time) || a.name.localeCompare(b.name));
+    let rank = 0;
+    for (const row of rows) {
+        row.rank = row._ranked ? ++rank : '';
+        delete row._time; delete row._ranked;
         ws.addRow(row);
     }
     ws.getColumn('created').numFmt = 'yyyy-mm-dd hh:mm';
@@ -481,7 +493,7 @@ async function buildWorkbook() {
         { header: 'Comments', key: 'comment', width: 50 },
         { header: 'Submitted', key: 'at', width: 20 }
     ];
-    for (const e of Object.values(db.evaluations).sort((a, b) => a.at.localeCompare(b.at))) {
+    for (const e of Object.values(db.evaluations).filter(e => !excluded.has(e.empId)).sort((a, b) => a.at.localeCompare(b.at))) {
         const p = db.players[e.empId] || {};
         const vals = Object.values(e.ratings).filter(Number.isFinite);
         const row = { name: p.name || '', empId: e.empId, station: p.station || '', comment: e.comment || '', at: xlDate(e.at), avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : '' };
@@ -507,7 +519,7 @@ async function buildWorkbook() {
         { header: 'Winner', key: 'winner', width: 26 },
         { header: 'Duration', key: 'dur', width: 10 }
     ];
-    for (const m of db.matches) {
+    for (const m of db.matches.filter(m => m.players.some(p => !excluded.has(p.empId)))) {
         const [a, b] = m.players;
         const g = gameById(m.game);
         const w = m.players.find(p => p.outcome === 'win');
@@ -529,7 +541,7 @@ async function buildWorkbook() {
         { header: 'Points', key: 'delta', width: 10 },
         { header: 'Reason', key: 'reason', width: 40 }
     ];
-    for (const p of Object.values(db.players)) for (const a of p.adjustments || []) adj.addRow({ at: xlDate(a.at), name: p.name, empId: p.empId, delta: a.delta, reason: a.reason || '' });
+    for (const p of Object.values(db.players).filter(p => !excluded.has(p.empId))) for (const a of p.adjustments || []) adj.addRow({ at: xlDate(a.at), name: p.name, empId: p.empId, delta: a.delta, reason: a.reason || '' });
     adj.getColumn('at').numFmt = 'yyyy-mm-dd hh:mm';
     styleHeader(adj);
     return wb;
@@ -987,8 +999,8 @@ admin.post('/station', (req, res) => {
     res.json({ ok: true });
 });
 
-admin.get('/export.xlsx', async (req, res) => {
-    const wb = await buildWorkbook();
+async function sendWorkbook(res, opts) {
+    const wb = await buildWorkbook(opts);
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     res.set({
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -996,6 +1008,18 @@ admin.get('/export.xlsx', async (req, res) => {
     });
     await wb.xlsx.write(res);
     res.end();
+}
+
+admin.get('/export.xlsx', (req, res) => sendWorkbook(res));
+
+// Custom export: leave some players out and/or add names that only appear in this sheet.
+admin.post('/export.xlsx', (req, res) => {
+    const exclude = Array.isArray(req.body.exclude) ? req.body.exclude.map(cleanId) : [];
+    const extra = (Array.isArray(req.body.extra) ? req.body.extra : [])
+        .map(x => ({ name: clean(x.name, 60), empId: cleanId(x.empId), points: Math.round(Number(x.points) || 0) }))
+        .filter(x => x.name.length >= 1)
+        .slice(0, 500);
+    return sendWorkbook(res, { exclude, extra });
 });
 
 admin.post('/reset', (req, res) => {

@@ -21,10 +21,20 @@
     let search = '';
     let saveError = '';
     let pollTimer = null;
+    const loadJson = (k, f) => { try { return JSON.parse(localStorage.getItem(k)) || f; } catch (e) { return f; } };
+    let exportExclude = new Set(loadJson('roadshow-export-exclude', []));
+    let exportExtra = loadJson('roadshow-export-extra', []);
+    let exportSearch = '';
+    const saveExport = () => {
+        try {
+            localStorage.setItem('roadshow-export-exclude', JSON.stringify([...exportExclude]));
+            localStorage.setItem('roadshow-export-extra', JSON.stringify(exportExtra));
+        } catch (e) {}
+    };
 
     const TABS = [
         ['live', 'Live control'], ['players', 'Players & scores'], ['content', 'Games & questions'],
-        ['rules', 'Scoring & rules'], ['text', 'Text & evaluation'], ['data', 'Devices & data']
+        ['rules', 'Scoring & rules'], ['text', 'Text & evaluation'], ['export', 'Excel export'], ['data', 'Devices & data']
     ];
     const ICONS = ['megaphone', 'shield', 'scale', 'puzzle', 'star4'];
     const TYPES = { quiz: 'Quick Quiz', wwyd: 'What Would You Do?', puzzle: 'Puzzle' };
@@ -112,7 +122,7 @@
         document.getElementById('lockBtn').hidden = false;
         const x = document.getElementById('excelBtn');
         x.hidden = false;
-        x.href = `/api/admin/export.xlsx?pin=${encodeURIComponent(pin)}`;
+        x.onclick = (ev) => { ev.preventDefault(); tab = 'export'; render(); window.scrollTo(0, 0); };
         load(true);
         clearInterval(pollTimer);
         pollTimer = setInterval(() => load(), 2500);
@@ -124,7 +134,7 @@
         const y = window.scrollY;
         const body = {
             live: renderLive, players: renderPlayers, content: renderContent,
-            rules: renderRules, text: renderText, data: renderData
+            rules: renderRules, text: renderText, export: renderExport, data: renderData
         }[tab]();
         const live = Object.values(data.stations).filter(s => s.match && s.match.phase !== 'done').length;
         app.innerHTML = `
@@ -518,6 +528,84 @@
         </div>`;
     }
 
+    /* ═════════ Excel export ═════════ */
+    function renderExport() {
+        // Forget exclusions for players that no longer exist.
+        const ids = new Set(data.players.map(p => p.empId));
+        for (const id of exportExclude) if (!ids.has(id)) exportExclude.delete(id);
+        const q = exportSearch.trim().toLowerCase();
+        const players = data.players.slice()
+            .sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9) || a.name.localeCompare(b.name))
+            .filter(p => !q || p.name.toLowerCase().includes(q) || String(p.empId).toLowerCase().includes(q));
+        const included = data.players.filter(p => !exportExclude.has(p.empId)).length;
+        const total = included + exportExtra.length;
+        const rows = players.map(p => {
+            const on = !exportExclude.has(p.empId);
+            return `
+            <tr style="${on ? '' : 'opacity:.45'}">
+                <td><label class="switch"><input type="checkbox" data-exp-id="${esc(p.empId)}" ${on ? 'checked' : ''}><span class="tr"></span></label></td>
+                <td>${esc(p.name)}</td><td>#${esc(p.empId)}</td>
+                <td class="num"><b>${p.total}</b></td><td class="num">${p.wins}-${p.losses}-${p.draws}</td>
+                <td>${p.evaluated ? '<span class="pill on">Rated</span>' : '<span class="pill off">No</span>'}</td>
+            </tr>`;
+        }).join('');
+        const extras = exportExtra.map((x, i) => `
+            <div><span><b>${esc(x.name)}</b>${x.empId ? ` · #${esc(x.empId)}` : ''} · ${x.points} pts</span>
+                <button class="b icon danger" data-act="exp-del" data-i="${i}" title="Remove">✕</button></div>`).join('');
+        return `
+        <div class="box panel">
+            <h2>1. Choose who goes in the sheet</h2>
+            <p class="sub">Untick anyone you want to leave out (tests, staff, duplicates). This only affects the download — their scores stay in the system.</p>
+            <div class="btns" style="margin-bottom:14px;align-items:center">
+                <input class="in search" id="expSearch" placeholder="Search name or ID" value="${esc(exportSearch)}">
+                <button class="b" data-act="exp-all">Tick all</button>
+                <button class="b" data-act="exp-none">Untick all</button>
+                <span class="pill">${included} of ${data.players.length} players included</span>
+            </div>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Include</th><th>Name</th><th>Employee ID</th><th class="num">Points</th><th class="num">W-L-D</th><th>Rated</th></tr></thead>
+                <tbody>${rows || '<tr><td colspan="6" style="color:var(--text-3)">No players yet.</td></tr>'}</tbody>
+            </table></div>
+        </div>
+        <div class="box panel">
+            <h2>2. Add names to the sheet</h2>
+            <p class="sub">Add people who aren't in the system (e.g. played on paper). They appear only in the Excel file, ranked by the points you enter — not on the leaderboard.</p>
+            <div class="btns" style="margin-bottom:12px">
+                <input class="in" id="ex-name" placeholder="Full name" style="max-width:260px">
+                <input class="in" id="ex-id" placeholder="Employee ID (optional)" style="max-width:200px">
+                <input class="in" id="ex-pts" type="number" placeholder="Points" style="max-width:120px">
+                <button class="b red" data-act="exp-add">Add name</button>
+            </div>
+            <div class="mini-list">${extras || '<div style="color:var(--text-3)">No extra names added.</div>'}</div>
+            ${exportExtra.length ? '<div class="btns" style="margin-top:10px"><button class="b danger" data-act="exp-clear">Remove all added names</button></div>' : ''}
+        </div>
+        <div class="box panel">
+            <h2>3. Download</h2>
+            <p class="sub">Sheets: Results, Evaluations, Matches, Adjustments. Left-out players are removed from every sheet.</p>
+            <div class="btns">
+                <button class="btn" data-act="exp-download" ${total ? '' : 'disabled'}>Download Excel (${total} ${total === 1 ? 'person' : 'people'})</button>
+                <button class="b" data-act="exp-reset">Reset choices</button>
+            </div>
+        </div>`;
+    }
+
+    async function downloadExport() {
+        const res = await fetch('/api/admin/export.xlsx', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-pin': pin },
+            body: JSON.stringify({ exclude: [...exportExclude], extra: exportExtra })
+        });
+        if (!res.ok) throw new Error('Export failed');
+        const blob = await res.blob();
+        const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name ? name[1] : 'Roadshow Results.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }
+
     /* ═════════ Devices & data ═════════ */
     function renderData() {
         const links = data.links.map(l => `
@@ -531,7 +619,7 @@
         <div class="box panel"><h2>Device links</h2><p class="sub">Scan each QR code with the matching iPad, or open the big-screen links on the TVs (press F11 for full screen).</p>
             <div class="grid-3">${links}</div></div>
         <div class="box panel"><h2>Excel</h2><p class="sub">Sheets: Results, Evaluations, Matches, Adjustments. A copy is also saved automatically on the laptop after every result.</p>
-            <a class="btn" href="/api/admin/export.xlsx?pin=${encodeURIComponent(pin)}">Download Excel</a></div>
+            <button class="btn" data-tab="export">Open Excel export</button></div>
         <div class="box panel"><h2>Match history <span class="pill">${data.matches.length}</span></h2><p class="sub">Deleting a match removes its points from both players.</p>
             <div class="table-wrap"><table><thead><tr><th>When</th><th>Screen</th><th>Game</th><th>Players</th><th class="num">Time</th><th></th></tr></thead><tbody>${log || '<tr><td colspan="6" style="color:var(--text-3)">No matches yet.</td></tr>'}</tbody></table></div></div>
         <div class="box panel" style="border:1px solid rgba(227,27,35,.5)"><h2>Danger zone</h2>
@@ -554,6 +642,12 @@
     /* ───────── Events ───────── */
     app.addEventListener('input', (e) => {
         const el = e.target;
+        if (el.id === 'expSearch') { exportSearch = el.value; const pos = el.selectionStart; render(); const s = document.getElementById('expSearch'); s.focus(); s.setSelectionRange(pos, pos); return; }
+        if (el.dataset.expId) {
+            if (el.checked) exportExclude.delete(el.dataset.expId); else exportExclude.add(el.dataset.expId);
+            saveExport();
+            return render();
+        }
         if (el.id === 'search') { search = el.value; const pos = el.selectionStart; render(); const s = document.getElementById('search'); s.focus(); s.setSelectionRange(pos, pos); return; }
         if (el.dataset.words) {
             setPath(rootOf(el.dataset.words), pathOf(el.dataset.words), el.value.split(/\s+/).filter(Boolean));
@@ -711,6 +805,25 @@
             }
 
             /* data */
+            case 'exp-all': exportExclude.clear(); saveExport(); return render();
+            case 'exp-none': data.players.forEach(p => exportExclude.add(p.empId)); saveExport(); return render();
+            case 'exp-add': {
+                const name = document.getElementById('ex-name').value.trim();
+                const empId = document.getElementById('ex-id').value.trim();
+                const points = Math.round(Number(document.getElementById('ex-pts').value) || 0);
+                if (!name) return toast('Enter a name');
+                exportExtra.push({ name, empId, points });
+                saveExport();
+                render();
+                document.getElementById('ex-name').focus();
+                return;
+            }
+            case 'exp-del': exportExtra.splice(Number(d.i), 1); saveExport(); return render();
+            case 'exp-clear': exportExtra = []; saveExport(); return render();
+            case 'exp-reset': exportExclude.clear(); exportExtra = []; exportSearch = ''; saveExport(); return render();
+            case 'exp-download':
+                try { await downloadExport(); toast('Excel downloaded'); } catch (err) { toast(err.message); }
+                return;
             case 'reset-all': {
                 if (document.getElementById('resetConfirm').value.trim().toUpperCase() !== 'RESET') return toast('Type RESET in the box first');
                 return run(async () => { const r = await post('/api/admin/reset'); toast(`All results cleared. Backup: ${r.backup}`); });

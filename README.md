@@ -22,7 +22,8 @@ If only one player is signed in they can play **solo** (can be switched off).
 - **Games & questions:** edit every question and answer in English and Arabic, change the correct answer, add/remove answers, questions, games and units, hide games or questions, reorder, edit the puzzle words.
 - **Scoring & rules:** points per answer, speed bonus, win/draw bonus, best-per-game vs. add-up scoring, timers, questions per match, shuffling, solo play, required rating, puzzle scoring, number of screens, leaderboard visibility, language options, admin PIN.
 - **Text & evaluation:** event name, rating questions, question labels.
-- **Devices & data:** QR codes, Excel download, full match history, reset results, restore original questions.
+- **Excel export:** tick/untick which players go in the sheet and add extra names (with ID and points) that only appear in the file, then download.
+- **Devices & data:** QR codes, full match history, reset results, restore original questions.
 
 ## Excel
 Saved automatically after every result in **`data/Roadshow Results.xlsx`** (sheets: Results, Evaluations, Matches, Adjustments), or download it from the admin panel. If the file is open in Excel it can't update — close it and it refreshes on the next result.
