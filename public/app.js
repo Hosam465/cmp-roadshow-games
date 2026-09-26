@@ -114,7 +114,8 @@
     const SLOT = () => device && device.device;
     const OTHER = () => (SLOT() === 'A' ? 'B' : 'A');
 
-    let lang = store.get('roadshow-lang', null);
+    const LKEY = () => `roadshow-lang-${device ? device.station + device.device : ''}`;
+    let lang = store.get(LKEY(), null);
     const PKEY = () => `roadshow-player-${device ? device.station + device.device : ''}`;
     let player = device ? store.get(PKEY(), null) : null; // { empId, name }
     let content = null;
@@ -245,7 +246,7 @@
     function applyLang() {
         document.documentElement.lang = lang || 'en';
         document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-        $('langLabel').textContent = lang === 'ar' ? 'English' : 'العربية';
+        document.querySelectorAll('#langBtn [data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === (lang || 'en')));
         document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t); });
         $('offlineText').textContent = t('offline');
     }
@@ -802,7 +803,9 @@
         evalState = { ratings: {}, comment: '', error: '' };
         store.del(PKEY());
         loginError = '';
-        if (lang && settings().defaultLang) { lang = settings().defaultLang; store.del('roadshow-lang'); applyLang(); }
+        lang = settings().defaultLang || 'en';
+        store.del(LKEY());
+        applyLang();
         go('login');
     }
 
@@ -862,12 +865,20 @@
     });
 
     $('finishBtn').addEventListener('click', () => go('confirm'));
-    $('langBtn').addEventListener('click', () => {
-        lang = lang === 'ar' ? 'en' : 'ar';
-        store.set('roadshow-lang', lang);
+    $('langBtn').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-lang]');
+        if (!b || b.dataset.lang === lang) return;
+        // Keep anything typed on the sign-in form when switching language.
+        const name = $('f-name') && $('f-name').value, id = $('f-id') && $('f-id').value;
+        const comment = $('f-comment') && $('f-comment').value;
+        if (comment !== undefined && comment !== null) evalState.comment = comment;
+        lang = b.dataset.lang;
+        store.set(LKEY(), lang);
         applyLang();
         lastKey = '';
         render();
+        if (name && $('f-name')) $('f-name').value = name;
+        if (id && $('f-id')) $('f-id').value = id;
     });
 
     /* ═════════════════════════ Boot ═════════════════════════ */

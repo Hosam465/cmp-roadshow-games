@@ -45,7 +45,7 @@ const DEFAULT_SETTINGS = {
     puzzlePointsPerWord: 10,
     requireEvaluation: true,
     thanksSeconds: 20,
-    showArabic: false,
+    showArabic: true,
     defaultLang: 'en',
     leaderboardRows: 7,
     showLeaderboard: true,
