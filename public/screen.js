@@ -229,18 +229,25 @@
         lastLeft = lastRight = '';
     }
 
-    function connect() {
-        const es = new EventSource('/api/stream');
-        es.onopen = () => setConn(true);
-        es.onmessage = async (e) => {
-            const data = JSON.parse(e.data);
+    let fails = 0;
+    async function poll() {
+        try {
+            const res = await fetch('/api/state', { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            fails = 0;
+            setConn(true);
             offset = data.serverNow - Date.now();
             if (!content || content.version !== data.contentVersion) await loadContent();
             snap = data;
             render();
-        };
-        es.onerror = () => setConn(false);
+        } catch (e) {
+            if (++fails >= 3) setConn(false);
+        } finally {
+            setTimeout(poll, (snap && snap.settings.pollMs) || 1000);
+        }
     }
+    function connect() { poll(); }
 
     function clock() { $('clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
     clock();

@@ -63,13 +63,14 @@
 
     async function load(force) {
         try {
-            const fresh = await api('/api/admin/state');
+            const fresh = await api(`/api/admin/state${tab === 'data' ? '?links=1' : ''}`);
             // Keep the admin's unsaved edits; otherwise follow the server.
             const cDirty = contentDirty(), sDirty = settingsDirty();
             data = fresh;
             offset = fresh.serverNow - Date.now();
             if (!draft.c || !cDirty || force === 'content') draft.c = clone(fresh.content);
             if (!draft.s || !sDirty || force === 'settings') draft.s = clone(fresh.settings);
+            if (!fresh.links && data && data.links && tab === 'data') fresh.links = data.links;
             const el = document.activeElement;
             const typing = el && app.contains(el) && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
             if (!typing || force) render();
@@ -501,7 +502,8 @@
                 <div class="set-item"><span class="lbl">Default language</span><select class="sel" data-bind="s:defaultLang"><option value="en" ${s.defaultLang === 'en' ? 'selected' : ''}>English</option><option value="ar" ${s.defaultLang === 'ar' ? 'selected' : ''}>Arabic</option></select></div>
             </div></div>
         <div class="box panel"><h2>Security</h2>
-            <div class="set-grid"><div class="set-item"><span class="lbl">Admin PIN</span>${inp('s:adminPin', s.adminPin)}<p class="hint">You'll need the new PIN next time you unlock.</p></div></div></div>`;
+            <div class="set-grid"><div class="set-item"><span class="lbl">Admin PIN</span>${data.pinFromEnv ? '<p class="hint">Set by the ADMIN_PIN environment variable on the server — change it there (e.g. Vercel → Settings → Environment Variables) and redeploy.</p>' : `${inp('s:adminPin', s.adminPin)}<p class="hint">You'll need the new PIN next time you unlock.</p>`}</div>
+                ${num('pollMs', 'Refresh speed (milliseconds)', 'How often iPads and screens check for updates. 1000 = once a second. Higher uses fewer server requests.')}</div></div>`;
     }
 
     /* ═════════ Text & evaluation ═════════ */
@@ -608,6 +610,7 @@
 
     /* ═════════ Devices & data ═════════ */
     function renderData() {
+        if (!data.links) { load(true); return '<div class="box panel"><p class="sub">Loading device links…</p></div>'; }
         const links = data.links.map(l => `
             <div class="link"><div class="qr">${l.qr}</div>
                 <div class="link-text"><b>${esc(l.label)}</b><code>${esc(l.url)}</code><a href="${esc(l.url)}" target="_blank" rel="noopener">Open</a></div></div>`).join('');

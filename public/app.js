@@ -169,19 +169,34 @@
         content = await res.json();
     }
 
-    function connect() {
-        const es = new EventSource(`/api/stream?station=${encodeURIComponent(device.station)}&device=${encodeURIComponent(device.device)}`);
-        es.onopen = () => { online = true; $('offline').hidden = true; };
-        es.onerror = () => { online = false; $('offline').hidden = false; };
-        es.onmessage = async (e) => {
-            const data = JSON.parse(e.data);
+    // Ask the server for the latest state about once a second (and right after every tap).
+    let pollTimer = null, polling = false, pollCount = 0, fails = 0;
+    async function poll() {
+        clearTimeout(pollTimer);
+        if (polling) return;
+        polling = true;
+        try {
+            const beat = pollCount++ % 10 === 0 ? '&beat=1' : '';
+            const res = await fetch(`/api/state?station=${encodeURIComponent(device.station)}&device=${encodeURIComponent(device.device)}${beat}`, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            fails = 0;
+            online = true;
+            $('offline').hidden = true;
             offset = data.serverNow - Date.now();
             if (!content || content.version !== data.contentVersion) { await loadContent(); lastKey = ''; }
             if (!lang) { lang = data.settings.defaultLang || 'en'; applyLang(); }
             snap = data;
             onSnapshot();
-        };
+        } catch (e) {
+            if (++fails >= 3) { online = false; $('offline').hidden = false; }
+        } finally {
+            polling = false;
+            pollTimer = setTimeout(poll, (snap && snap.settings.pollMs) || 1000);
+        }
     }
+    const pollNow = () => setTimeout(poll, 30);
+    function connect() { poll(); }
 
     /* ═════════════════════════ Derived state ═════════════════════════ */
     const st = () => (snap && device ? snap.stations[device.station] : null);
@@ -546,7 +561,7 @@
         if (!m || m.phase !== 'question' || picks[m.qIndex] !== undefined) return;
         picks[m.qIndex] = opt;
         render();
-        post('/api/answer', { qIndex: m.qIndex, opt }).catch(() => {});
+        post('/api/answer', { qIndex: m.qIndex, opt }).catch(() => {}).finally(pollNow);
     }
 
     function renderResult(m) {
@@ -665,7 +680,7 @@
     }
     function sendPuzzle() {
         const p = puzzle;
-        post('/api/puzzle', { w: p.done ? p.words.length : p.w, mistakes: p.mistakes, hints: p.hints, done: p.done, words: p.words.length }).catch(() => {});
+        post('/api/puzzle', { w: p.done ? p.words.length : p.w, mistakes: p.mistakes, hints: p.hints, done: p.done, words: p.words.length }).catch(() => {}).finally(() => { if (p.done || p.filled[p.w] === 0) pollNow(); });
     }
 
     /* ═════════════════════════ Finish / evaluation ═════════════════════════ */
@@ -784,6 +799,7 @@
     /* ═════════════════════════ Events ═════════════════════════ */
     async function act(path, body) {
         try { await post(path, body); } catch (e) { toast(e.message); }
+        pollNow();
     }
 
     app.addEventListener('click', (e) => {

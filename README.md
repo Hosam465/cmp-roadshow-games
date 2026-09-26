@@ -1,8 +1,19 @@
 # Compliance Roadshow Games
 
-Head-to-head compliance games for the roadshow booth: **2 big screens**, each with **2 iPads**. The two players at a screen challenge each other; the big screen shows the match live, then the leaderboard. One laptop runs everything over Wi-Fi (no internet needed at the booth).
+Head-to-head compliance games for the roadshow booth: **2 big screens**, each with **2 iPads**. The two players at a screen get the same question at the same time and race for points; the big screen shows the match live, then the leaderboard.
 
-## Start
+Run it **online on Vercel** (share a link) or **on a laptop** at the booth (no internet needed).
+
+## Option A — Vercel
+1. On vercel.com: **Add New → Project** → import `cmp-roadshow-games` → **Deploy** (no settings to change).
+2. Add the database (free): open the project → **Storage** → **Create Database** → **Upstash for Redis** (free plan) → **Connect** to the project.
+3. Set your admin PIN: **Settings → Environment Variables** → add `ADMIN_PIN` = your PIN.
+4. **Deployments → ⋯ → Redeploy** so steps 2–3 take effect.
+5. Open `https://<your-project>.vercel.app/admin.html`, unlock with your PIN, and use *Devices & data* for the iPad/screen links and QR codes.
+
+Notes: iPads and screens check for updates about once a second (adjustable in *Scoring & rules → Refresh speed*). The free Upstash plan covers testing and a normal event day; for several full days of 6 devices, raise the refresh to 2000 ms or upgrade Upstash. Excel downloads from the admin panel (there is no auto-saved file online).
+
+## Option B — Laptop at the booth
 1. Connect the laptop, the 4 iPads and the 2 screens to the **same Wi-Fi**.
 2. Double-click **`Start Roadshow.bat`** (first run installs what it needs — internet needed once). If Windows Firewall asks, click **Allow**.
 3. Open the **admin panel** (`http://<laptop-ip>:3000/admin.html`, PIN **2026** — change it in *Scoring & rules*). On *Devices & data*, scan each QR code with the matching iPad and open the big-screen links on the TVs (F11 = full screen).
